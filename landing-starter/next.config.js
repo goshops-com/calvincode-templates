@@ -1,9 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    // use swc for dev, only use babel for build prod online demo
-    forceSwcTransforms: true,
-  },
+  // SWC is now default in Next.js 15, so we can remove forceSwcTransforms
   headers: async () => {
     return [
       {

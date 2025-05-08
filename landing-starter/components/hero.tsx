@@ -39,7 +39,7 @@ export default function Hero() {
         
         <div className="md:w-1/2">
           <div className="relative">
-            <div className="bg-gray-100 aspect-[3/4] flex items-center justify-center overflow-hidden">
+            <div className="bg-gray-100 aspect-square flex items-center justify-center overflow-hidden">
               <p className="text-gray-400 text-sm font-light uppercase tracking-widest">Fashion Lookbook</p>
             </div>
           </div>
