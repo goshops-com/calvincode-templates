@@ -101,6 +101,7 @@ ${userMessage}
     }
 
     setAiQuery(''); // Clear the input field after sending
+    setShowModal(false); // Close the modal
   };
 
   return (
