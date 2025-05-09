@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const cors = require('cors');
 
 // Create Express app, HTTP server and Socket.IO server
 const app = express();
@@ -19,6 +20,21 @@ const io = new Server(server, {
 // Track last known file hashes
 let lastUxHash = null;
 let lastPreviewHash = null;
+
+// Apply CORS middleware
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'OPTIONS'],
+  credentials: true
+}));
+
+// Set headers to allow iframe embedding
+app.use((req, res, next) => {
+  res.header('X-Frame-Options', 'ALLOWALL');
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  next();
+});
 
 // Serve static files
 app.use(express.static('./'));
