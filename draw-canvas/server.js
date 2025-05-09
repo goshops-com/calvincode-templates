@@ -3,11 +3,22 @@ const http = require('http');
 const { Server } = require('socket.io');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 // Create Express app, HTTP server and Socket.IO server
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+    credentials: true
+  }
+});
+
+// Track last known file hashes
+let lastUxHash = null;
+let lastPreviewHash = null;
 
 // Serve static files
 app.use(express.static('./'));
@@ -93,6 +104,11 @@ if (!fs.existsSync(uxFilePath)) {
   console.log('Default ux.json file created');
 }
 
+// Compute MD5 hash of file content
+function getMd5Hash(content) {
+  return crypto.createHash('md5').update(content).digest('hex');
+}
+
 // API endpoint to save state
 app.post('/save-state', (req, res) => {
   try {
@@ -135,6 +151,7 @@ io.on('connection', (socket) => {
   // Send current file content immediately on connection
   try {
     const fileContent = fs.readFileSync(uxFilePath, 'utf8');
+    lastUxHash = getMd5Hash(fileContent);
     socket.emit('initial-state', fileContent);
     console.log('Sent initial state to client');
   } catch (err) {
@@ -161,7 +178,6 @@ function setupWatcher() {
   }
   
   console.log('Setting up file watcher for:', uxFilePath);
-  console.log('Setting up file watcher for:', previewFilePath);
   
   try {
     fsWatcher = fs.watch(uxFilePath, (eventType) => {
@@ -172,11 +188,20 @@ function setupWatcher() {
         setTimeout(() => {
           try {
             const fileContent = fs.readFileSync(uxFilePath, 'utf8');
+            
             // Validate JSON
             JSON.parse(fileContent);
-            // Broadcast to all clients
-            io.emit('file-updated', fileContent);
-            console.log('Notified all clients about file update');
+            
+            // Check if content actually changed using MD5
+            const currentHash = getMd5Hash(fileContent);
+            if (currentHash !== lastUxHash) {
+              lastUxHash = currentHash;
+              // Broadcast to all clients
+              io.emit('file-updated', fileContent);
+              console.log('Notified all clients about file update');
+            } else {
+              console.log('File content unchanged, skipping notification');
+            }
           } catch (err) {
             console.error('Error reading updated file:', err);
           }
@@ -184,23 +209,38 @@ function setupWatcher() {
       }
     });
     
-    previewWatcher = fs.watch(previewFilePath, (eventType) => {
-      if (eventType === 'change') {
-        console.log('preview.html file changed');
-        
-        // Add a small delay to ensure the file is completely written
-        setTimeout(() => {
-          try {
-            const fileContent = fs.readFileSync(previewFilePath, 'utf8');
-            // Broadcast to all clients
-            io.emit('preview-updated', fileContent);
-            console.log('Notified all clients about preview update');
-          } catch (err) {
-            console.error('Error reading updated preview file:', err);
-          }
-        }, 100);
-      }
-    });
+    // Only set up preview watcher if the file exists
+    if (fs.existsSync(previewFilePath)) {
+      console.log('Setting up file watcher for:', previewFilePath);
+      
+      previewWatcher = fs.watch(previewFilePath, (eventType) => {
+        if (eventType === 'change') {
+          console.log('preview.html file changed');
+          
+          // Add a small delay to ensure the file is completely written
+          setTimeout(() => {
+            try {
+              const fileContent = fs.readFileSync(previewFilePath, 'utf8');
+              
+              // Check if content actually changed using MD5
+              const currentHash = getMd5Hash(fileContent);
+              if (currentHash !== lastPreviewHash) {
+                lastPreviewHash = currentHash;
+                // Broadcast to all clients
+                io.emit('preview-updated', fileContent);
+                console.log('Notified all clients about preview update');
+              } else {
+                console.log('Preview content unchanged, skipping notification');
+              }
+            } catch (err) {
+              console.error('Error reading updated preview file:', err);
+            }
+          }, 100);
+        }
+      });
+    } else {
+      console.log('preview.html does not exist, skipping watcher setup');
+    }
     
     console.log('File watchers set up successfully');
   } catch (err) {

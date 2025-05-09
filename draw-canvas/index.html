@@ -72,20 +72,20 @@
   <div class="flex border-b border-gray-300 bg-gray-100">
     <button class="tab-button active px-4 py-2.5 text-base font-medium border-b-2 border-blue-600 transition-colors hover:bg-gray-200 focus:outline-none" onclick="openTab(event, 'excalidraw-tab')">Draw</button>
     <button class="tab-button px-4 py-2.5 text-base font-medium transition-colors hover:bg-gray-200 focus:outline-none" onclick="openTab(event, 'preview-tab')">Preview</button>
-    <button id="ask-ai-button" class="px-4 py-2.5 text-base font-medium shadow-sm transition-colors bg-blue-600 text-white hover:bg-blue-700 focus:outline-none" onclick="openAIModal()">Ask UI Agent</button>
+    <button id="ask-ai-button" class="px-4 py-2.5 text-base font-medium shadow-sm transition-colors bg-blue-600 text-white hover:bg-blue-700 focus:outline-none">Ask UI Agent</button>
     <button id="save-button" class="ml-auto px-4 py-2.5 text-base font-medium shadow-sm bg-green-600 text-white transition-colors hover:bg-green-700 focus:outline-none" onclick="saveDrawing()">Save</button>
   </div>
   
   <!-- AI Popup Modal -->
-  <div id="ai-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 hidden z-50">
+  <div id="ai-modal" class="fixed inset-0 z-50" style="display: none; background-color: rgba(0,0,0,0.5);">
     <div class="flex items-center justify-center h-full">
       <div class="bg-white rounded-lg p-6 w-full max-w-lg">
         <h3 class="text-xl font-semibold mb-4">Send to UI Agent</h3>
         <p class="mb-4">Describe the UI you want the AI to implement:</p>
         <textarea id="ai-instructions" class="w-full border border-gray-300 rounded p-2 h-32 mb-4" placeholder="Describe your desired UI implementation..."></textarea>
         <div class="flex justify-end space-x-2">
-          <button onclick="closeAIModal()" class="px-4 py-2 font-medium bg-gray-300 rounded shadow-sm hover:bg-gray-400 transition-colors">Cancel</button>
-          <button onclick="submitAIRequest()" class="px-4 py-2 font-medium bg-blue-600 text-white rounded shadow-sm hover:bg-blue-700 transition-colors">Submit</button>
+          <button id="cancel-ai-btn" class="px-4 py-2 font-medium bg-gray-300 rounded shadow-sm hover:bg-gray-400 transition-colors">Cancel</button>
+          <button id="submit-ai-btn" class="px-4 py-2 font-medium bg-blue-600 text-white rounded shadow-sm hover:bg-blue-700 transition-colors">Submit</button>
         </div>
       </div>
     </div>
@@ -112,18 +112,68 @@
     // Global socket
     let socket = null;
     
+    // Wait for DOM to be fully loaded before attaching event listeners
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('DOM loaded, setting up modal handlers');
+      
+      // Set up AI modal event listeners
+      const askAIButton = document.getElementById('ask-ai-button');
+      const aiModal = document.getElementById('ai-modal');
+      const cancelAIBtn = document.getElementById('cancel-ai-btn');
+      const submitAIBtn = document.getElementById('submit-ai-btn');
+      
+      if (askAIButton) {
+        console.log('Ask AI button found, attaching click handler');
+        askAIButton.addEventListener('click', function() {
+          console.log('Ask AI button clicked');
+          openAIModal();
+        });
+      } else {
+        console.error('Ask AI button not found');
+      }
+      
+      if (cancelAIBtn) {
+        cancelAIBtn.addEventListener('click', closeAIModal);
+      }
+      
+      if (submitAIBtn) {
+        submitAIBtn.addEventListener('click', submitAIRequest);
+      }
+      
+      // Close modal when clicking outside
+      aiModal.addEventListener('click', function(event) {
+        if (event.target === aiModal) {
+          closeAIModal();
+        }
+      });
+    });
+    
     // AI Modal Functions
     function openAIModal() {
-      document.getElementById('ai-modal').classList.remove('hidden');
+      console.log('Opening AI modal');
+      const modal = document.getElementById('ai-modal');
+      if (!modal) {
+        console.error('AI modal element not found');
+        return;
+      }
+      
+      modal.style.display = 'block';
       document.getElementById('ai-instructions').focus();
       
       // Add event listener for escape key
       document.addEventListener('keydown', handleEscapeKey);
+      console.log('AI modal opened');
     }
     
     function closeAIModal() {
-      document.getElementById('ai-modal').classList.add('hidden');
-      document.getElementById('ai-instructions').value = '';
+      console.log('Closing AI modal');
+      const modal = document.getElementById('ai-modal');
+      modal.style.display = 'none';
+      
+      const instructionsField = document.getElementById('ai-instructions');
+      if (instructionsField) {
+        instructionsField.value = '';
+      }
       
       // Remove event listener for escape key
       document.removeEventListener('keydown', handleEscapeKey);
@@ -134,18 +184,6 @@
         closeAIModal();
       }
     }
-    
-    // Event delegation for handling clicks outside the modal content
-    document.addEventListener('click', function(event) {
-      const modal = document.getElementById('ai-modal');
-      const modalContent = modal.querySelector('.bg-white');
-      
-      if (modal && !modal.classList.contains('hidden')) {
-        if (event.target === modal || !modalContent.contains(event.target)) {
-          closeAIModal();
-        }
-      }
-    });
     
     function submitAIRequest() {
       const instructions = document.getElementById('ai-instructions').value.trim();
@@ -162,10 +200,10 @@
       const url = `${protocol}//${hostname}${port ? ':'+port : ''}/agent/chat`;
       
       // Create the message with specific format
-      const message = `@ui please follow the instructions from the user: "${instructions}". Review the current wireframe by reading ui.md, the file ux.json, and ensure all results follow the brand guidelines in brand.md. Write the result to preview.html.`;
+      const message = `@dev please follow the instructions from the user: "${instructions}". Review the current wireframe by reading instructions from ui.md, the file ux.json, and ensure all results follow the brand guidelines in brand.md. Write the result to preview.html.`;
       
       // Show loading state
-      const submitButton = document.querySelector('button[onclick="submitAIRequest()"]');
+      const submitButton = document.getElementById('submit-ai-btn');
       const originalText = submitButton.textContent;
       submitButton.textContent = 'Processing...';
       submitButton.disabled = true;
@@ -283,11 +321,12 @@
     
     function connectSocketIO() {
       // Get the protocol, hostname, and port from the current page
+      const protocol = window.location.protocol;
       const host = window.location.hostname;
       const port = window.location.port;
       
-      // Create Socket.IO connection using the same location as the page
-      const socketUrl = `http://${host}${port ? ':'+port : ''}`;
+      // Create Socket.IO connection using the same protocol as the page
+      const socketUrl = `${protocol}//${host}${port ? ':'+port : ''}`;
       console.log('Connecting to Socket.IO at:', socketUrl);
       
       // Connect to Socket.IO with reconnection settings
@@ -315,19 +354,97 @@
           // Store the initial data for saving later
           if (parsedData && Array.isArray(parsedData.elements)) {
             console.log('Storing valid elements array with', parsedData.elements.length, 'items');
-            window.currentDrawingState = parsedData;
+            
+            // Sanitize elements to ensure compatibility with Excalidraw
+            const sanitizedElements = parsedData.elements.map(element => {
+              // Create a new clean element with only the essential properties
+              const cleanElement = {
+                id: element.id,
+                type: element.type,
+                x: element.x,
+                y: element.y,
+                width: element.width,
+                height: element.height,
+                angle: element.angle,
+                strokeColor: element.strokeColor,
+                backgroundColor: element.backgroundColor,
+                fillStyle: element.fillStyle,
+                strokeWidth: element.strokeWidth,
+                strokeStyle: element.strokeStyle,
+                roughness: element.roughness,
+                opacity: element.opacity,
+                groupIds: element.groupIds || [],
+                frameId: element.frameId,
+                roundness: element.roundness
+              };
+              
+              // Add text-specific properties if it's a text element
+              if (element.type === 'text') {
+                cleanElement.text = element.text;
+                cleanElement.fontSize = element.fontSize;
+                cleanElement.fontFamily = element.fontFamily;
+                cleanElement.textAlign = element.textAlign;
+                cleanElement.verticalAlign = element.verticalAlign;
+              }
+              
+              return cleanElement;
+            });
+            
+            window.currentDrawingState = {
+              type: "excalidraw",
+              version: 2,
+              source: "excalidraw-auto-refresh",
+              elements: sanitizedElements,
+              appState: parsedData.appState || { viewBackgroundColor: "#FFFFFF" }
+            };
           } else if (parsedData && typeof parsedData === 'object') {
             // Check if the data itself is the elements array or if it needs to be extracted
             const elements = Array.isArray(parsedData) ? parsedData : 
-                            parsedData.type === 'excalidraw' ? parsedData.elements : null;
+                           parsedData.type === 'excalidraw' ? parsedData.elements : null;
             
             if (elements) {
               console.log('Storing elements through alternative path');
+              
+              // Sanitize elements here too
+              const sanitizedElements = elements.map(element => {
+                // Create a new clean element with only the essential properties
+                const cleanElement = {
+                  id: element.id,
+                  type: element.type,
+                  x: element.x,
+                  y: element.y,
+                  width: element.width,
+                  height: element.height,
+                  angle: element.angle,
+                  strokeColor: element.strokeColor,
+                  backgroundColor: element.backgroundColor,
+                  fillStyle: element.fillStyle,
+                  strokeWidth: element.strokeWidth,
+                  strokeStyle: element.strokeStyle,
+                  roughness: element.roughness,
+                  opacity: element.opacity,
+                  groupIds: element.groupIds || [],
+                  frameId: element.frameId,
+                  roundness: element.roundness
+                };
+                
+                // Add text-specific properties if it's a text element
+                if (element.type === 'text') {
+                  cleanElement.text = element.text;
+                  cleanElement.fontSize = element.fontSize;
+                  cleanElement.fontFamily = element.fontFamily;
+                  cleanElement.textAlign = element.textAlign;
+                  cleanElement.verticalAlign = element.verticalAlign;
+                }
+                
+                return cleanElement;
+              });
+              
               window.currentDrawingState = {
                 type: "excalidraw",
                 version: 2,
                 source: "excalidraw-auto-refresh",
-                elements: elements,
+                elements: sanitizedElements,
                 appState: parsedData.appState || { viewBackgroundColor: "#FFFFFF" }
               };
             }
