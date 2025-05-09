@@ -152,8 +152,12 @@ io.on('connection', (socket) => {
   try {
     const fileContent = fs.readFileSync(uxFilePath, 'utf8');
     lastUxHash = getMd5Hash(fileContent);
-    socket.emit('initial-state', fileContent);
-    console.log('Sent initial state to client');
+
+    // Wait 2 seconds before sending initial state
+    setTimeout(() => {
+      socket.emit('initial-state', fileContent);
+      console.log('Sent initial state to client');
+    }, 2000);
   } catch (err) {
     console.error('Error reading initial state:', err);
     socket.emit('error', 'Error reading state file');

@@ -73,6 +73,7 @@
     <button class="tab-button active px-4 py-2.5 text-base font-medium border-b-2 border-blue-600 transition-colors hover:bg-gray-200 focus:outline-none" onclick="openTab(event, 'excalidraw-tab')">Draw</button>
     <button class="tab-button px-4 py-2.5 text-base font-medium transition-colors hover:bg-gray-200 focus:outline-none" onclick="openTab(event, 'preview-tab')">Preview</button>
     <button id="ask-ai-button" class="px-4 py-2.5 text-base font-medium shadow-sm transition-colors bg-blue-600 text-white hover:bg-blue-700 focus:outline-none">Ask UI Agent</button>
+    <button id="force-reload-btn" class="px-4 py-2.5 text-base font-medium shadow-sm transition-colors bg-amber-500 text-white hover:bg-amber-600 focus:outline-none">Force Reload Drawing</button>
     <button id="save-button" class="ml-auto px-4 py-2.5 text-base font-medium shadow-sm bg-green-600 text-white transition-colors hover:bg-green-700 focus:outline-none" onclick="saveDrawing()">Save</button>
   </div>
   
@@ -114,7 +115,7 @@
     
     // Wait for DOM to be fully loaded before attaching event listeners
     document.addEventListener('DOMContentLoaded', function() {
-      console.log('DOM loaded, setting up modal handlers');
+      console.log('DOM loaded, setting up event handlers');
       
       // Set up AI modal event listeners
       const askAIButton = document.getElementById('ask-ai-button');
@@ -140,12 +141,23 @@
         submitAIBtn.addEventListener('click', submitAIRequest);
       }
       
+      // Set up force reload button
+      const forceReloadBtn = document.getElementById('force-reload-btn');
+      if (forceReloadBtn) {
+        forceReloadBtn.addEventListener('click', function() {
+          console.log('Force reload button clicked');
+          forceReloadDrawing();
+        });
+      }
+      
       // Close modal when clicking outside
-      aiModal.addEventListener('click', function(event) {
-        if (event.target === aiModal) {
-          closeAIModal();
-        }
-      });
+      if (aiModal) {
+        aiModal.addEventListener('click', function(event) {
+          if (event.target === aiModal) {
+            closeAIModal();
+          }
+        });
+      }
     });
     
     // AI Modal Functions
@@ -331,13 +343,26 @@
       
       // Connect to Socket.IO with reconnection settings
       socket = io(socketUrl, {
-        reconnectionAttempts: 5,
+        reconnectionAttempts: 10,
         reconnectionDelay: 1000,
-        timeout: 5000
+        reconnection: true,
+        timeout: 10000
       });
       
       socket.on('connect', function() {
         console.log('Socket.IO connection established, id:', socket.id);
+        
+        // Explicitly request initial state when connection is established
+        console.log('Explicitly requesting initial state from server');
+        socket.emit('request-initial-state');
+        
+        // Set fallback timer if no response after 2 seconds
+        setTimeout(() => {
+          if (!window.receivedInitialStateFromServer) {
+            console.log('No response to initial state request, trying direct file load');
+            forceReloadDrawing();
+          }
+        }, 2000);
       });
       
       socket.on('initial-state', function(data) {
@@ -347,118 +372,8 @@
           const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
           console.log('Parsed data:', parsedData);
           
-          // Store the original state for comparison and preservation
-          window.originalDrawingState = JSON.parse(JSON.stringify(parsedData));
-          console.log('Original state stored for preservation');
-          
-          // Store the initial data for saving later
-          if (parsedData && Array.isArray(parsedData.elements)) {
-            console.log('Storing valid elements array with', parsedData.elements.length, 'items');
-            
-            // Sanitize elements to ensure compatibility with Excalidraw
-            const sanitizedElements = parsedData.elements.map(element => {
-              // Create a new clean element with only the essential properties
-              const cleanElement = {
-                id: element.id,
-                type: element.type,
-                x: element.x,
-                y: element.y,
-                width: element.width,
-                height: element.height,
-                angle: element.angle,
-                strokeColor: element.strokeColor,
-                backgroundColor: element.backgroundColor,
-                fillStyle: element.fillStyle,
-                strokeWidth: element.strokeWidth,
-                strokeStyle: element.strokeStyle,
-                roughness: element.roughness,
-                opacity: element.opacity,
-                groupIds: element.groupIds || [],
-                frameId: element.frameId,
-                roundness: element.roundness
-              };
-              
-              // Add text-specific properties if it's a text element
-              if (element.type === 'text') {
-                cleanElement.text = element.text;
-                cleanElement.fontSize = element.fontSize;
-                cleanElement.fontFamily = element.fontFamily;
-                cleanElement.textAlign = element.textAlign;
-                cleanElement.verticalAlign = element.verticalAlign;
-              }
-              
-              return cleanElement;
-            });
-            
-            window.currentDrawingState = {
-              type: "excalidraw",
-              version: 2,
-              source: "excalidraw-auto-refresh",
-              elements: sanitizedElements,
-              appState: parsedData.appState || { viewBackgroundColor: "#FFFFFF" }
-            };
-          } else if (parsedData && typeof parsedData === 'object') {
-            // Check if the data itself is the elements array or if it needs to be extracted
-            const elements = Array.isArray(parsedData) ? parsedData : 
-                           parsedData.type === 'excalidraw' ? parsedData.elements : null;
-            
-            if (elements) {
-              console.log('Storing elements through alternative path');
-              
-              // Sanitize elements here too
-              const sanitizedElements = elements.map(element => {
-                // Create a new clean element with only the essential properties
-                const cleanElement = {
-                  id: element.id,
-                  type: element.type,
-                  x: element.x,
-                  y: element.y,
-                  width: element.width,
-                  height: element.height,
-                  angle: element.angle,
-                  strokeColor: element.strokeColor,
-                  backgroundColor: element.backgroundColor,
-                  fillStyle: element.fillStyle,
-                  strokeWidth: element.strokeWidth,
-                  strokeStyle: element.strokeStyle,
-                  roughness: element.roughness,
-                  opacity: element.opacity,
-                  groupIds: element.groupIds || [],
-                  frameId: element.frameId,
-                  roundness: element.roundness
-                };
-                
-                // Add text-specific properties if it's a text element
-                if (element.type === 'text') {
-                  cleanElement.text = element.text;
-                  cleanElement.fontSize = element.fontSize;
-                  cleanElement.fontFamily = element.fontFamily;
-                  cleanElement.textAlign = element.textAlign;
-                  cleanElement.verticalAlign = element.verticalAlign;
-                }
-                
-                return cleanElement;
-              });
-              
-              window.currentDrawingState = {
-                type: "excalidraw",
-                version: 2,
-                source: "excalidraw-auto-refresh",
-                elements: sanitizedElements,
-                appState: parsedData.appState || { viewBackgroundColor: "#FFFFFF" }
-              };
-            }
-          }
-          
-          // Now update the UI (using the same logic as before)
-          if (window.excalidrawComponent) {
-            console.log('Updating scene in Excalidraw component');
-            window.excalidrawComponent.updateScene(window.currentDrawingState);
-          } else {
-            console.log('Storing data for when component mounts');
-            window.initialDiagramData = window.currentDrawingState;
-          }
-          
+          // Use the new processing function
+          processAndDisplayDrawingData(parsedData);
         } catch (err) {
           console.error('Error processing initial-state message:', err);
         }
@@ -499,8 +414,197 @@
     }
     
     try {
+      // Set initial mount state flag
+      window.excalidrawComponentMounted = false;
+      
       // Connect to Socket.IO
       connectSocketIO();
+      
+      // Initialize drawing with whatever data we have
+      setTimeout(() => {
+        if (!window.receivedInitialStateFromServer) {
+          console.log('No data received via socket yet, trying direct file load');
+          forceReloadDrawing();
+        }
+      }, 1000);
+      
+    } catch (error) {
+      console.error('Error initializing Excalidraw:', error);
+      alert('Error initializing Excalidraw: ' + error.message);
+    }
+    
+    // Force reload drawing function
+    function forceReloadDrawing() {
+      console.log('Force reload drawing initiated');
+      
+      // First try to fetch the saved file directly using fetch API
+      fetch('/ux.json')
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`Error loading ux.json: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          console.log('Successfully fetched ux.json directly:', data);
+          processAndDisplayDrawingData(data);
+        })
+        .catch(error => {
+          console.error('Error fetching ux.json directly:', error);
+          
+          // If direct loading fails, request via socket
+          if (socket && socket.connected) {
+            console.log('Requesting initial state via socket as fallback');
+            socket.emit('request-initial-state');
+          } else {
+            alert('Error loading drawing data. Socket not connected. Please refresh the page.');
+          }
+        });
+    }
+    
+    // Process and display drawing data
+    function processAndDisplayDrawingData(data) {
+      console.log('Processing drawing data to display:', data);
+      
+      try {
+        // Sanitize elements to ensure compatibility
+        let sanitizedElements = [];
+        
+        if (data && Array.isArray(data.elements) && data.elements.length > 0) {
+          console.log(`Processing ${data.elements.length} elements`);
+          sanitizedElements = sanitizeElements(data.elements);
+        } else if (Array.isArray(data) && data.length > 0) {
+          console.log(`Processing ${data.length} elements from array`);
+          sanitizedElements = sanitizeElements(data);
+        } else {
+          console.error('No valid elements found in data:', data);
+          alert('No valid drawing elements found in the data. Please check the file format.');
+          return;
+        }
+        
+        // Create clean state object
+        const cleanState = {
+          type: "excalidraw",
+          version: 2,
+          source: "excalidraw-auto-refresh",
+          elements: sanitizedElements,
+          appState: (data.appState || { viewBackgroundColor: "#FFFFFF" })
+        };
+        
+        console.log('Clean state created with', sanitizedElements.length, 'elements');
+        
+        // Store states
+        window.currentDrawingState = cleanState;
+        window.originalDrawingState = JSON.parse(JSON.stringify(cleanState));
+        window.initialDiagramData = cleanState;
+        window.receivedInitialStateFromServer = true;
+        
+        // Apply to component if mounted
+        if (window.excalidrawComponent) {
+          console.log('Updating Excalidraw component with new scene');
+          
+          try {
+            // First try the standard method
+            window.excalidrawComponent.updateScene(cleanState);
+            
+            // Verify the update was applied
+            verifySceneUpdate(sanitizedElements.length);
+          } catch (err) {
+            console.error('Error updating scene:', err);
+            
+            // Fallback to alternative methods
+            try {
+              console.log('Trying alternative scene update method');
+              window.excalidrawComponent.updateScene({
+                elements: sanitizedElements,
+                appState: (data.appState || { viewBackgroundColor: "#FFFFFF" })
+              });
+              
+              // Verify again
+              verifySceneUpdate(sanitizedElements.length);
+            } catch (err2) {
+              console.error('Alternative scene update failed:', err2);
+              alert('Error applying drawing to canvas. Please refresh the page and try again.');
+            }
+          }
+        } else {
+          console.log('Excalidraw component not mounted, will initialize with data');
+          // Trigger initialization with data
+          initializeExcalidraw();
+        }
+      } catch (err) {
+        console.error('Error processing drawing data:', err);
+        alert('Error processing drawing data: ' + err.message);
+      }
+    }
+    
+    // Sanitize elements helper function
+    function sanitizeElements(elements) {
+      return elements.map(element => {
+        // Create a new clean element with only the essential properties
+        const cleanElement = {
+          id: element.id,
+          type: element.type,
+          x: element.x,
+          y: element.y,
+          width: element.width,
+          height: element.height,
+          angle: element.angle || 0,
+          strokeColor: element.strokeColor,
+          backgroundColor: element.backgroundColor,
+          fillStyle: element.fillStyle || "solid",
+          strokeWidth: element.strokeWidth || 1,
+          strokeStyle: element.strokeStyle || "solid",
+          roughness: element.roughness || 1,
+          opacity: element.opacity !== undefined ? element.opacity : 100,
+          groupIds: element.groupIds || [],
+          frameId: element.frameId,
+          roundness: element.roundness
+        };
+        
+        // Add text-specific properties if it's a text element
+        if (element.type === 'text') {
+          cleanElement.text = element.text || "";
+          cleanElement.fontSize = element.fontSize || 20;
+          cleanElement.fontFamily = element.fontFamily || 1;
+          cleanElement.textAlign = element.textAlign || "center";
+          cleanElement.verticalAlign = element.verticalAlign || "middle";
+        }
+        
+        return cleanElement;
+      });
+    }
+    
+    // Verify scene update helper
+    function verifySceneUpdate(expectedCount) {
+      setTimeout(() => {
+        if (window.excalidrawComponent && window.excalidrawComponent.getSceneElements) {
+          const elements = window.excalidrawComponent.getSceneElements();
+          console.log('Scene update verification: Found', elements.length, 'elements, expected', expectedCount);
+          
+          if (elements.length !== expectedCount) {
+            console.log('Element count mismatch, attempting one more update');
+            window.excalidrawComponent.updateScene(window.currentDrawingState);
+            
+            // Final verification
+            setTimeout(() => {
+              if (window.excalidrawComponent && window.excalidrawComponent.getSceneElements) {
+                const finalElements = window.excalidrawComponent.getSceneElements();
+                console.log('Final scene verification: Found', finalElements.length, 'elements');
+                
+                if (finalElements.length !== expectedCount) {
+                  console.warn('Could not match expected element count after multiple attempts');
+                }
+              }
+            }, 300);
+          }
+        }
+      }, 200);
+    }
+    
+    // Function to initialize Excalidraw with the available data
+    function initializeExcalidraw() {
+      console.log('Initializing Excalidraw component');
       
       // This will hold our final data to pass to Excalidraw
       let finalData = {
@@ -508,90 +612,91 @@
         appState: { viewBackgroundColor: "#FFFFFF" }
       };
       
-      // Wait a brief moment to ensure we get data from the socket if available
-      setTimeout(() => {
-        console.log('Preparing initial data for Excalidraw');
-        
-        // Use the data received from socket if available
-        if (window.initialDiagramData && window.initialDiagramData.elements) {
-          console.log('Using socket data, found elements:', window.initialDiagramData.elements.length);
-          finalData = {
-            elements: window.initialDiagramData.elements,
-            appState: window.initialDiagramData.appState || { viewBackgroundColor: "#FFFFFF" }
-          };
+      // Use the data received from socket if available
+      if (window.initialDiagramData && window.initialDiagramData.elements) {
+        console.log('Using stored data, found elements:', window.initialDiagramData.elements.length);
+        finalData = window.initialDiagramData;
+      } else if (sampleElements.length > 0) {
+        console.log('Using sample elements as fallback');
+        finalData.elements = sampleElements;
+      } else {
+        console.log('No elements available, starting with empty canvas');
+      }
+      
+      console.log('Creating App with finalData:', finalData);
+      
+      if (!Excalidraw) {
+        console.error('Cannot create Excalidraw app: Excalidraw component not available');
+        alert('Error: Drawing editor could not be loaded. Please refresh the page and try again.');
+        return;
+      }
+      
+      const App = React.createElement(Excalidraw, {
+        initialData: finalData,
+        onMount: api => { 
+          console.log('*** onMount fired, API object available:', !!api);
           
-          // Update our current state for saving later
-          window.currentDrawingState = finalData;
-        } else if (sampleElements.length > 0) {
-          console.log('Using sample elements as fallback');
-          finalData.elements = sampleElements;
+          // Store a reference to the component
+          window.excalidrawComponent = api;
+          window.excalidrawComponentMounted = true;
+          console.log('Excalidraw component reference stored');
           
-          // Update our current state for saving later
-          window.currentDrawingState = finalData;
-        } else {
-          console.log('No elements available, starting with empty canvas');
-        }
-        
-        console.log('Creating App with finalData:', finalData);
-        
-        if (!Excalidraw) {
-          console.error('Cannot create Excalidraw app: Excalidraw component not available');
-          alert('Error: Drawing editor could not be loaded. Please refresh the page and try again.');
-          return;
-        }
-        
-        const App = React.createElement(Excalidraw, {
-          initialData: finalData,
-          onMount: api => { 
-            console.log('*** onMount fired, API object available:', !!api);
+          // If we received new data while waiting for component to mount, update now
+          if (window.receivedInitialStateFromServer && window.currentDrawingState) {
+            console.log('Applying state that arrived before component was mounted');
+            window.excalidrawComponent.updateScene(window.currentDrawingState);
             
-            // Store a reference to the component
-            window.excalidrawComponent = api;
-            console.log('Excalidraw component reference stored');
-          },
-          onChange: (elements, appState) => {
-            console.log('Content changed:', elements.length, 'elements');
-            
-            // Check if this is a meaningful change or just Excalidraw internal updates
-            const hasUserMadeChanges = detectUserChanges(elements);
-            
-            // Store the current state for saving later
-            window.currentDrawingState = {
-              type: "excalidraw",
-              version: 2,
-              source: "excalidraw-auto-refresh",
-              elements: elements,
-              appState: appState
-            };
-            
-            // If user hasn't made real changes, keep original state as primary
-            if (!hasUserMadeChanges && window.originalDrawingState) {
-              console.log('No meaningful changes detected, will use original state for saving');
-            } else {
-              console.log('User changes detected, will use updated state for saving');
-              // Clear original state reference to use current state
-              window.originalDrawingState = null;
-            }
-            
-            // Optionally send updates back to server when user makes changes
+            // Verify the update after a short delay
+            verifySceneUpdate(window.currentDrawingState.elements.length);
+          } else if (!window.receivedInitialStateFromServer) {
+            // If we still don't have data, re-request it
+            console.log('Component mounted but no data received yet, requesting initial state');
             if (socket && socket.connected) {
-              // Send updates to server - using appropriate Socket.IO event
-              socket.emit('diagram-update', {
-                elements: elements,
-                appState: appState
-              });
+              socket.emit('request-initial-state');
+            } else {
+              // Try direct load as last resort
+              forceReloadDrawing();
             }
           }
-        });
-        
-        console.log('App component created, rendering to DOM');
-        ReactDOM.render(App, document.getElementById('root'));
-        console.log('App rendered to DOM');
-      }, 500); // Wait 500ms for socket data before rendering
+        },
+        onChange: (elements, appState) => {
+          console.log('Content changed:', elements.length, 'elements');
+          
+          // Check if this is a meaningful change or just Excalidraw internal updates
+          const hasUserMadeChanges = detectUserChanges(elements);
+          
+          // Store the current state for saving later
+          window.currentDrawingState = {
+            type: "excalidraw",
+            version: 2,
+            source: "excalidraw-auto-refresh",
+            elements: elements,
+            appState: appState
+          };
+          
+          // If user hasn't made real changes, keep original state as primary
+          if (!hasUserMadeChanges && window.originalDrawingState) {
+            console.log('No meaningful changes detected, will use original state for saving');
+          } else {
+            console.log('User changes detected, will use updated state for saving');
+            // Clear original state reference to use current state
+            window.originalDrawingState = null;
+          }
+          
+          // Optionally send updates back to server when user makes changes
+          if (socket && socket.connected) {
+            // Send updates to server - using appropriate Socket.IO event
+            socket.emit('diagram-update', {
+              elements: elements,
+              appState: appState
+            });
+          }
+        }
+      });
       
-    } catch (error) {
-      console.error('Error initializing Excalidraw:', error);
-      alert('Error initializing Excalidraw: ' + error.message);
+      console.log('App component created, rendering to DOM');
+      ReactDOM.render(App, document.getElementById('root'));
+      console.log('App rendered to DOM');
     }
     
     // Function to detect if user has made meaningful changes to the drawing
