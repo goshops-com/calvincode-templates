@@ -1,0 +1,64 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "excalidraw-auto-refresh",
+  "elements": [
+    {
+      "id": "rectangle1",
+      "type": "rectangle",
+      "x": 100,
+      "y": 100,
+      "width": 200,
+      "height": 100,
+      "angle": 0,
+      "strokeColor": "#000000",
+      "backgroundColor": "#4a8df6",
+      "fillStyle": "solid",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "roughness": 1,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 1042,
+      "version": 1,
+      "versionNonce": 1234567890,
+      "isDeleted": false
+    },
+    {
+      "id": "text1",
+      "type": "text",
+      "x": 150,
+      "y": 140,
+      "width": 100,
+      "height": 20,
+      "angle": 0,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "fillStyle": "hachure",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "roughness": 1,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 1043,
+      "version": 1,
+      "versionNonce": 1234567891,
+      "isDeleted": false,
+      "text": "Hello World",
+      "fontSize": 20,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#ffffff",
+    "gridSize": 20
+  }
+}

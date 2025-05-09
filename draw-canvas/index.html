@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Excalidraw Minimal Test</title>
+  <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@excalidraw/excalidraw@0.15.3/dist/excalidraw.production.min.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html,body{height:100%;margin:0}
+    #root{border:1px solid #999;height:100%}
+    
+    .tab-container {
+      display: flex;
+      border-bottom: 1px solid #ccc;
+      background-color: #f1f1f1;
+    }
+    
+    .tab-button {
+      background-color: inherit;
+      border: none;
+      outline: none;
+      cursor: pointer;
+      padding: 10px 16px;
+      transition: 0.3s;
+      font-size: 16px;
+    }
+    
+    .tab-button:hover {
+      background-color: #ddd;
+    }
+    
+    .tab-button.active {
+      background-color: #f9fafb; /* Slightly lighter than bg-gray-100 */
+    }
+    
+    .save-button {
+      margin-left: auto;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: 0.3s;
+    }
+    
+    .save-button:hover {
+      background-color: #45a049;
+    }
+    
+    .tab-content {
+      display: none;
+      position: relative;
+      z-index: 10;
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+    
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+  </style>
+</head>
+<body class="h-full">
+  <div class="flex border-b border-gray-300 bg-gray-100">
+    <button class="tab-button active px-4 py-2.5 text-base font-medium border-b-2 border-blue-600 transition-colors hover:bg-gray-200 focus:outline-none" onclick="openTab(event, 'excalidraw-tab')">Draw</button>
+    <button class="tab-button px-4 py-2.5 text-base font-medium transition-colors hover:bg-gray-200 focus:outline-none" onclick="openTab(event, 'preview-tab')">Preview</button>
+    <button id="ask-ai-button" class="px-4 py-2.5 text-base font-medium shadow-sm transition-colors bg-blue-600 text-white hover:bg-blue-700 focus:outline-none" onclick="openAIModal()">Ask UI Agent</button>
+    <button id="save-button" class="ml-auto px-4 py-2.5 text-base font-medium shadow-sm bg-green-600 text-white transition-colors hover:bg-green-700 focus:outline-none" onclick="saveDrawing()">Save</button>
+  </div>
+  
+  <!-- AI Popup Modal -->
+  <div id="ai-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 hidden z-50">
+    <div class="flex items-center justify-center h-full">
+      <div class="bg-white rounded-lg p-6 w-full max-w-lg">
+        <h3 class="text-xl font-semibold mb-4">Send to UI Agent</h3>
+        <p class="mb-4">Describe the UI you want the AI to implement:</p>
+        <textarea id="ai-instructions" class="w-full border border-gray-300 rounded p-2 h-32 mb-4" placeholder="Describe your desired UI implementation..."></textarea>
+        <div class="flex justify-end space-x-2">
+          <button onclick="closeAIModal()" class="px-4 py-2 font-medium bg-gray-300 rounded shadow-sm hover:bg-gray-400 transition-colors">Cancel</button>
+          <button onclick="submitAIRequest()" class="px-4 py-2 font-medium bg-blue-600 text-white rounded shadow-sm hover:bg-blue-700 transition-colors">Submit</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Notification Banner -->
+  <div id="notification-banner" class="fixed top-0 left-0 right-0 bg-blue-500 text-white p-2 text-center transform -translate-y-full transition-transform duration-300 z-50">
+    Preview updated! <button onclick="dismissNotification()" class="ml-4 px-2 py-0.5 bg-blue-700 rounded hover:bg-blue-800">View</button>
+  </div>
+  
+  <div id="excalidraw-tab" class="tab-content active h-[calc(100%-41px)] w-full">
+    <div id="root" class="border border-gray-400 h-full"></div>
+  </div>
+  
+  <div id="preview-tab" class="tab-content h-[calc(100%-41px)] w-full">
+    <iframe src="/preview.html" title="Preview" class="w-full h-full border-none"></iframe>
+  </div>
+  
+  <script>
+    // Global variable to store the current drawing state
+    window.currentDrawingState = null;
+    window.originalDrawingState = null;
+    
+    // Global socket
+    let socket = null;
+    
+    // AI Modal Functions
+    function openAIModal() {
+      document.getElementById('ai-modal').classList.remove('hidden');
+      document.getElementById('ai-instructions').focus();
+      
+      // Add event listener for escape key
+      document.addEventListener('keydown', handleEscapeKey);
+    }
+    
+    function closeAIModal() {
+      document.getElementById('ai-modal').classList.add('hidden');
+      document.getElementById('ai-instructions').value = '';
+      
+      // Remove event listener for escape key
+      document.removeEventListener('keydown', handleEscapeKey);
+    }
+    
+    function handleEscapeKey(event) {
+      if (event.key === 'Escape') {
+        closeAIModal();
+      }
+    }
+    
+    // Event delegation for handling clicks outside the modal content
+    document.addEventListener('click', function(event) {
+      const modal = document.getElementById('ai-modal');
+      const modalContent = modal.querySelector('.bg-white');
+      
+      if (modal && !modal.classList.contains('hidden')) {
+        if (event.target === modal || !modalContent.contains(event.target)) {
+          closeAIModal();
+        }
+      }
+    });
+    
+    function submitAIRequest() {
+      const instructions = document.getElementById('ai-instructions').value.trim();
+      
+      if (!instructions) {
+        alert('Please provide instructions for the AI.');
+        return;
+      }
+      
+      const protocol = window.location.protocol;
+      let hostname = window.location.hostname;
+      hostname = hostname.replace('-preview', '');
+      const port = window.location.port;
+      const url = `${protocol}//${hostname}${port ? ':'+port : ''}/agent/chat`;
+      
+      // Create the message with specific format
+      const message = `@ui please follow the instructions from the user: "${instructions}". Review the current wireframe by reading ui.md, the file ux.json, and ensure all results follow the brand guidelines in brand.md. Write the result to preview.html.`;
+      
+      // Show loading state
+      const submitButton = document.querySelector('button[onclick="submitAIRequest()"]');
+      const originalText = submitButton.textContent;
+      submitButton.textContent = 'Processing...';
+      submitButton.disabled = true;
+      
+      // Send POST request
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ message: message })
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`Request failed: ${response.status} ${response.statusText}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        console.log('AI request successful:', data);
+        alert('Your UI implementation request has been sent to the AI! The preview will update once processing is complete.');
+        closeAIModal();
+      })
+      .catch(error => {
+        console.error('Error sending AI request:', error);
+        alert(`Error: Could not send request. ${error.message}`);
+      })
+      .finally(() => {
+        // Reset button state
+        submitButton.textContent = originalText;
+        submitButton.disabled = false;
+      });
+    }
+    
+    function openTab(evt, tabName) {
+      const tabContents = document.getElementsByClassName("tab-content");
+      for (let i = 0; i < tabContents.length; i++) {
+        tabContents[i].classList.remove("active");
+      }
+      
+      const tabButtons = document.getElementsByClassName("tab-button");
+      for (let i = 0; i < tabButtons.length; i++) {
+        tabButtons[i].classList.remove("active");
+        tabButtons[i].classList.remove("bg-gray-300");
+        tabButtons[i].classList.remove("border-b-2");
+        tabButtons[i].classList.remove("border-blue-600");
+      }
+      
+      document.getElementById(tabName).classList.add("active");
+      evt.currentTarget.classList.add("active");
+      evt.currentTarget.classList.add("border-b-2");
+      evt.currentTarget.classList.add("border-blue-600");
+    }
+    
+    function saveDrawing() {
+      console.log('Save button clicked - using captured state');
+      
+      // Use original state if no changes were made
+      const stateToSave = window.originalDrawingState || window.currentDrawingState;
+      
+      if (!stateToSave || !stateToSave.elements) {
+        console.error('No drawing state available to save');
+        alert('No drawing data available to save. Please try again after making some changes.');
+        return;
+      }
+      
+      console.log('Using state with', stateToSave.elements.length, 'elements');
+      
+      // Create save data while preserving original structure if possible
+      const saveData = {
+        type: stateToSave.type || "excalidraw",
+        version: stateToSave.version || 2,
+        source: stateToSave.source || "excalidraw-auto-refresh",
+        elements: stateToSave.elements,
+        appState: stateToSave.appState || { viewBackgroundColor: "#FFFFFF" }
+      };
+      
+      // Send to server via the /save-state endpoint
+      fetch('/save-state', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(saveData)
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`Save failed: ${response.status} ${response.statusText}`);
+        }
+        return response.text();
+      })
+      .then(data => {
+        console.log('Save successful:', data);
+        alert('Drawing saved successfully!');
+      })
+      .catch(error => {
+        console.error('Error saving drawing:', error);
+        alert(`Error saving drawing: ${error.message}`);
+      });
+    }
+    
+    console.log('Script started');
+    console.log('ExcalidrawLib available:', !!window.ExcalidrawLib);
+    
+    const { Excalidraw } = window.ExcalidrawLib || {};
+    console.log('Excalidraw component extracted:', !!Excalidraw);
+    
+    if (!Excalidraw) {
+      console.warn('Excalidraw component not available. Editor may not function properly.');
+    }
+    
+    const sampleElements = [
+      
+    ];
+    
+    function connectSocketIO() {
+      // Get the protocol, hostname, and port from the current page
+      const host = window.location.hostname;
+      const port = window.location.port;
+      
+      // Create Socket.IO connection using the same location as the page
+      const socketUrl = `http://${host}${port ? ':'+port : ''}`;
+      console.log('Connecting to Socket.IO at:', socketUrl);
+      
+      // Connect to Socket.IO with reconnection settings
+      socket = io(socketUrl, {
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        timeout: 5000
+      });
+      
+      socket.on('connect', function() {
+        console.log('Socket.IO connection established, id:', socket.id);
+      });
+      
+      socket.on('initial-state', function(data) {
+        console.log('Received initial state from server');
+        try {
+          // Parse the data if it's a string
+          const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+          console.log('Parsed data:', parsedData);
+          
+          // Store the original state for comparison and preservation
+          window.originalDrawingState = JSON.parse(JSON.stringify(parsedData));
+          console.log('Original state stored for preservation');
+          
+          // Store the initial data for saving later
+          if (parsedData && Array.isArray(parsedData.elements)) {
+            console.log('Storing valid elements array with', parsedData.elements.length, 'items');
+            window.currentDrawingState = parsedData;
+          } else if (parsedData && typeof parsedData === 'object') {
+            // Check if the data itself is the elements array or if it needs to be extracted
+            const elements = Array.isArray(parsedData) ? parsedData : 
+                            parsedData.type === 'excalidraw' ? parsedData.elements : null;
+            
+            if (elements) {
+              console.log('Storing elements through alternative path');
+              window.currentDrawingState = {
+                type: "excalidraw",
+                version: 2,
+                source: "excalidraw-auto-refresh",
+                elements: elements,
+                appState: parsedData.appState || { viewBackgroundColor: "#FFFFFF" }
+              };
+            }
+          }
+          
+          // Now update the UI (using the same logic as before)
+          if (window.excalidrawComponent) {
+            console.log('Updating scene in Excalidraw component');
+            window.excalidrawComponent.updateScene(window.currentDrawingState);
+          } else {
+            console.log('Storing data for when component mounts');
+            window.initialDiagramData = window.currentDrawingState;
+          }
+          
+        } catch (err) {
+          console.error('Error processing initial-state message:', err);
+        }
+      });
+      
+      socket.on('file-updated', function(data) {
+        console.log('Received file update from server, refreshing page to load latest data');
+        window.location.reload();
+      });
+      
+      socket.on('preview-updated', function(data) {
+        console.log('Preview file updated, refreshing preview iframe');
+        const previewIframe = document.querySelector('#preview-tab iframe');
+        if (previewIframe) {
+          previewIframe.src = previewIframe.src;
+        }
+      });
+      
+      socket.on('ai-response', function(data) {
+        console.log('Received AI response:', data);
+        if (data.success) {
+          alert('AI has implemented your UI request! Refreshing the page to show changes.');
+          window.location.reload();
+        } else {
+          alert('AI encountered an issue: ' + (data.message || 'Unknown error'));
+        }
+      });
+      
+      socket.on('disconnect', function() {
+        console.log('Socket.IO connection closed');
+      });
+      
+      socket.on('connect_error', function(error) {
+        console.error('Socket.IO connection error:', error);
+        console.log('Socket.IO connection error. Refreshing page in 3 seconds...');
+        setTimeout(() => window.location.reload(), 3000);
+      });
+    }
+    
+    try {
+      // Connect to Socket.IO
+      connectSocketIO();
+      
+      // This will hold our final data to pass to Excalidraw
+      let finalData = {
+        elements: [],
+        appState: { viewBackgroundColor: "#FFFFFF" }
+      };
+      
+      // Wait a brief moment to ensure we get data from the socket if available
+      setTimeout(() => {
+        console.log('Preparing initial data for Excalidraw');
+        
+        // Use the data received from socket if available
+        if (window.initialDiagramData && window.initialDiagramData.elements) {
+          console.log('Using socket data, found elements:', window.initialDiagramData.elements.length);
+          finalData = {
+            elements: window.initialDiagramData.elements,
+            appState: window.initialDiagramData.appState || { viewBackgroundColor: "#FFFFFF" }
+          };
+          
+          // Update our current state for saving later
+          window.currentDrawingState = finalData;
+        } else if (sampleElements.length > 0) {
+          console.log('Using sample elements as fallback');
+          finalData.elements = sampleElements;
+          
+          // Update our current state for saving later
+          window.currentDrawingState = finalData;
+        } else {
+          console.log('No elements available, starting with empty canvas');
+        }
+        
+        console.log('Creating App with finalData:', finalData);
+        
+        if (!Excalidraw) {
+          console.error('Cannot create Excalidraw app: Excalidraw component not available');
+          alert('Error: Drawing editor could not be loaded. Please refresh the page and try again.');
+          return;
+        }
+        
+        const App = React.createElement(Excalidraw, {
+          initialData: finalData,
+          onMount: api => { 
+            console.log('*** onMount fired, API object available:', !!api);
+            
+            // Store a reference to the component
+            window.excalidrawComponent = api;
+            console.log('Excalidraw component reference stored');
+          },
+          onChange: (elements, appState) => {
+            console.log('Content changed:', elements.length, 'elements');
+            
+            // Check if this is a meaningful change or just Excalidraw internal updates
+            const hasUserMadeChanges = detectUserChanges(elements);
+            
+            // Store the current state for saving later
+            window.currentDrawingState = {
+              type: "excalidraw",
+              version: 2,
+              source: "excalidraw-auto-refresh",
+              elements: elements,
+              appState: appState
+            };
+            
+            // If user hasn't made real changes, keep original state as primary
+            if (!hasUserMadeChanges && window.originalDrawingState) {
+              console.log('No meaningful changes detected, will use original state for saving');
+            } else {
+              console.log('User changes detected, will use updated state for saving');
+              // Clear original state reference to use current state
+              window.originalDrawingState = null;
+            }
+            
+            // Optionally send updates back to server when user makes changes
+            if (socket && socket.connected) {
+              // Send updates to server - using appropriate Socket.IO event
+              socket.emit('diagram-update', {
+                elements: elements,
+                appState: appState
+              });
+            }
+          }
+        });
+        
+        console.log('App component created, rendering to DOM');
+        ReactDOM.render(App, document.getElementById('root'));
+        console.log('App rendered to DOM');
+      }, 500); // Wait 500ms for socket data before rendering
+      
+    } catch (error) {
+      console.error('Error initializing Excalidraw:', error);
+      alert('Error initializing Excalidraw: ' + error.message);
+    }
+    
+    // Function to detect if user has made meaningful changes to the drawing
+    function detectUserChanges(currentElements) {
+      // If we don't have original elements to compare, assume changes were made
+      if (!window.originalDrawingState || !window.originalDrawingState.elements) {
+        return true;
+      }
+      
+      const originalElements = window.originalDrawingState.elements;
+      
+      // Quick check - different number of elements means changes were made
+      if (originalElements.length !== currentElements.length) {
+        return true;
+      }
+      
+      // Simple detection - check if any positions have changed
+      // This isn't 100% accurate but should work for most cases
+      for (let i = 0; i < originalElements.length; i++) {
+        const orig = originalElements[i];
+        const curr = currentElements.find(el => el.id === orig.id);
+        
+        // If element was removed or added
+        if (!curr) {
+          return true;
+        }
+        
+        // Check for position changes
+        if (orig.x !== curr.x || orig.y !== curr.y) {
+          return true;
+        }
+        
+        // Check for text content changes
+        if (orig.type === 'text' && orig.text !== curr.text) {
+          return true;
+        }
+      }
+      
+      // No significant changes detected
+      return false;
+    }
+  </script>
+</body>
+</html>
