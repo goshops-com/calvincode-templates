@@ -290,7 +290,7 @@
         version: stateToSave.version || 2,
         source: stateToSave.source || "excalidraw-auto-refresh",
         elements: stateToSave.elements,
-        appState: stateToSave.appState || { viewBackgroundColor: "#FFFFFF" }
+        appState: { viewBackgroundColor: "#FFFFFF",  gridSize: 20 }
       };
       
       // Send to server via the /save-state endpoint
