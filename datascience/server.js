@@ -30,7 +30,15 @@ app.get('/', (req, res) => {
   };
 
   const proxyReq = https.request(options, (proxyRes) => {
-    res.writeHead(proxyRes.statusCode, proxyRes.headers);
+    // Copy headers but remove any security headers we want to override
+    const headers = { ...proxyRes.headers };
+    delete headers['content-security-policy'];
+    delete headers['x-frame-options'];
+    
+    // Apply our custom security headers
+    headers['content-security-policy'] = "frame-ancestors 'self' build.calvincode.ai *.calvincode.ai";
+    
+    res.writeHead(proxyRes.statusCode, headers);
     proxyRes.pipe(res, { end: true });
   });
 
@@ -57,8 +65,21 @@ app.use((req, res) => {
   };
 
   const proxyReq = https.request(options, (proxyRes) => {
-    res.writeHead(proxyRes.statusCode, proxyRes.headers);
+    // Copy headers but remove any security headers we want to override
+    const headers = { ...proxyRes.headers };
+    delete headers['content-security-policy'];
+    delete headers['x-frame-options'];
+    
+    // Apply our custom security headers
+    headers['content-security-policy'] = "frame-ancestors 'self' build.calvincode.ai *.calvincode.ai";
+    
+    res.writeHead(proxyRes.statusCode, headers);
     proxyRes.pipe(res, { end: true });
+  });
+
+  proxyReq.on('error', (e) => {
+    console.error(`Proxy request error: ${e.message}`);
+    res.status(500).send('Proxy Error');
   });
 
   req.pipe(proxyReq, { end: true });
