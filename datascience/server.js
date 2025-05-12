@@ -8,6 +8,9 @@ const PORT = process.env.PORT || 8000;
 const JUPYTER_TOKEN = '48c1af71a3e789adccd7cb46a6ff59ec1150f7a34c27471c';
 const JUPYTER_BASE_URL = 'https://jupyter.apps.calvincode.net';
 
+// Parse JSON bodies
+app.use(express.json());
+
 // Simple middleware to add iframe headers and CORS support
 app.use((req, res, next) => {
   res.removeHeader('X-Frame-Options');
@@ -72,6 +75,15 @@ app.get('/', (req, res) => {
             </a>
           </td>
           <td class="py-3 px-4 text-gray-400">${modifiedDate}</td>
+          <td class="py-3 px-4 text-right">
+            <a 
+              href="/api/delete/${encodeURIComponent(file.name)}" 
+              class="bg-red-600 hover:bg-red-700 text-white py-1 px-3 rounded-md text-sm transition-colors inline-block"
+              onclick="return confirm('Are you sure you want to delete ${file.name}? This action cannot be undone.')"
+            >
+              Delete
+            </a>
+          </td>
         </tr>
       `;
     })
@@ -111,12 +123,13 @@ app.get('/', (req, res) => {
                 <tr>
                   <th class="py-3 px-4 text-left text-gray-300 font-semibold bg-gray-700">File Name</th>
                   <th class="py-3 px-4 text-left text-gray-300 font-semibold bg-gray-700">Last Modified</th>
+                  <th class="py-3 px-4 text-right text-gray-300 font-semibold bg-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody id="file-list" class="divide-y divide-gray-700">
                 ${filesHtml.length ? filesHtml : `
                   <tr>
-                    <td colspan="2" class="py-8 text-center text-gray-400">
+                    <td colspan="3" class="py-8 text-center text-gray-400">
                       No notebook files found in ./notebooks
                     </td>
                   </tr>
@@ -138,8 +151,8 @@ app.get('/', (req, res) => {
           refreshStatus.classList.add('opacity-100');
           
           fetch(window.location.href + 'api/files')
-            .then(response => response.json())
-            .then(data => {
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
               const fileList = document.getElementById('file-list');
               
               // Apply refresh animation
@@ -147,42 +160,47 @@ app.get('/', (req, res) => {
               
               // Update the file list
               if (data.files.length === 0) {
-                fileList.innerHTML = \`
-                  <tr>
-                    <td colspan="2" class="py-8 text-center text-gray-400">
-                      No notebook files found in ./notebooks
-                    </td>
-                  </tr>
-                \`;
+                fileList.innerHTML = '<tr><td colspan="3" class="py-8 text-center text-gray-400">No notebook files found in ./notebooks</td></tr>';
               } else {
-                fileList.innerHTML = data.files.map(file => \`
-                  <tr class="hover:bg-gray-700">
-                    <td class="py-3 px-4">
-                      <a href="\${file.url}" target="_blank" class="text-blue-400 hover:text-blue-300 flex items-center">
-                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                        </svg>
-                        \${file.name}
-                      </a>
-                    </td>
-                    <td class="py-3 px-4 text-gray-400">\${file.modified}</td>
-                  </tr>
-                \`).join('');
+                let htmlContent = '';
+                
+                for (let i = 0; i < data.files.length; i++) {
+                  const file = data.files[i];
+                  htmlContent += '<tr class="hover:bg-gray-700">';
+                  htmlContent += '<td class="py-3 px-4">';
+                  htmlContent += '<a href="' + file.url + '" target="_blank" class="text-blue-400 hover:text-blue-300 flex items-center">';
+                  htmlContent += '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>';
+                  htmlContent += file.name;
+                  htmlContent += '</a>';
+                  htmlContent += '</td>';
+                  htmlContent += '<td class="py-3 px-4 text-gray-400">' + file.modified + '</td>';
+                  htmlContent += '<td class="py-3 px-4 text-right">';
+                  htmlContent += '<a href="/api/delete/' + encodeURIComponent(file.name) + '" ';
+                  htmlContent += 'class="bg-red-600 hover:bg-red-700 text-white py-1 px-3 rounded-md text-sm transition-colors inline-block" ';
+                  htmlContent += 'onclick="return confirm(\'Are you sure you want to delete ' + file.name + '? This action cannot be undone.\')">';
+                  htmlContent += 'Delete</a>';
+                  htmlContent += '</td>';
+                  htmlContent += '</tr>';
+                }
+                
+                fileList.innerHTML = htmlContent;
               }
               
               // Update last refreshed time
               document.getElementById('last-refreshed').textContent = 'Last refreshed: ' + new Date().toLocaleString();
               
               // Hide refreshing indicator after a short delay
-              setTimeout(() => {
+              setTimeout(function() {
                 refreshStatus.classList.remove('opacity-100');
                 fileListContainer.classList.remove('refresh-animation');
               }, 500);
             })
-            .catch(error => {
+            .catch(function(error) {
               console.error('Error fetching file list:', error);
               refreshStatus.textContent = 'Error refreshing';
-              setTimeout(() => refreshStatus.classList.remove('opacity-100'), 2000);
+              setTimeout(function() {
+                refreshStatus.classList.remove('opacity-100');
+              }, 2000);
             });
         }
         
@@ -225,6 +243,59 @@ app.get('/api/files', (req, res) => {
   } catch (error) {
     console.error('Error reading notebooks directory:', error);
     res.status(500).json({ error: 'Failed to read notebooks directory' });
+  }
+});
+
+// API endpoint to delete a file
+app.delete('/api/files/:filename', (req, res) => {
+  const filename = req.params.filename;
+  console.log(`Delete request received for file: ${filename}`);
+  
+  try {
+    const filepath = path.join(__dirname, 'notebooks', filename);
+    console.log(`Attempting to delete file at path: ${filepath}`);
+    
+    // Check if file exists
+    if (!fs.existsSync(filepath)) {
+      console.log(`File not found: ${filepath}`);
+      return res.status(404).json({ success: false, error: 'File not found' });
+    }
+    
+    // Delete the file
+    fs.unlinkSync(filepath);
+    console.log(`File deleted successfully: ${filepath}`);
+    
+    return res.json({ success: true, message: `${filename} deleted successfully` });
+  } catch (error) {
+    console.error('Error deleting file:', error);
+    return res.status(500).json({ success: false, error: 'Failed to delete file', details: error.message });
+  }
+});
+
+// API endpoint for a simpler delete operation via GET (fallback for DELETE method issues)
+app.get('/api/delete/:filename', (req, res) => {
+  const filename = req.params.filename;
+  console.log(`Delete request (GET) received for file: ${filename}`);
+  
+  try {
+    const filepath = path.join(__dirname, 'notebooks', filename);
+    console.log(`Attempting to delete file at path: ${filepath}`);
+    
+    // Check if file exists
+    if (!fs.existsSync(filepath)) {
+      console.log(`File not found: ${filepath}`);
+      return res.status(404).json({ success: false, error: 'File not found' });
+    }
+    
+    // Delete the file
+    fs.unlinkSync(filepath);
+    console.log(`File deleted successfully: ${filepath}`);
+    
+    // Redirect back to home page after successful deletion
+    return res.redirect('/');
+  } catch (error) {
+    console.error('Error deleting file:', error);
+    return res.status(500).json({ success: false, error: 'Failed to delete file', details: error.message });
   }
 });
 

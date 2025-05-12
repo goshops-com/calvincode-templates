@@ -49,6 +49,8 @@ The sales data contains the following columns:
 
 # Important Notes
 
+## Format
+
 When creating Jupyter notebook JSON structures, ensure all code cells include an empty 'outputs' array, even if there are no outputs yet. The basic structure for a code cell must include:
 
 {
@@ -60,4 +62,19 @@ When creating Jupyter notebook JSON structures, ensure all code cells include an
 }
 
 The 'outputs' field is required for all code cells according to the Jupyter notebook specification, even if it's empty. Omitting this field will cause 'Notebook JSON is invalid: outputs is a required property' errors when trying to open or run the notebook.
+
+## Dependencies
+
+The notebook runs on a separated server, so for each dependency needed simply add in an initial cell the 
+
+```!pip install <dependency>```
+
+This will ensure that the dependency is installed on the server and can be used in the notebook.
+
+For example, if seaborn is needed, the following cell should be added:
+
+```!pip install seaborn```
+
+
+
 
