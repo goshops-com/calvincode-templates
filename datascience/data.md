@@ -45,3 +45,19 @@ The sales data contains the following columns:
 - **CONTACTLASTNAME**: Customer contact's last name
 - **CONTACTFIRSTNAME**: Customer contact's first name
 - **DEALSIZE**: Size of the deal (Small, Medium, Large)
+
+
+# Important Notes
+
+When creating Jupyter notebook JSON structures, ensure all code cells include an empty 'outputs' array, even if there are no outputs yet. The basic structure for a code cell must include:
+
+{
+  "cell_type": "code",
+  "execution_count": null,
+  "metadata": {},
+  "source": ["your code here"],
+  "outputs": []
+}
+
+The 'outputs' field is required for all code cells according to the Jupyter notebook specification, even if it's empty. Omitting this field will cause 'Notebook JSON is invalid: outputs is a required property' errors when trying to open or run the notebook.
+
