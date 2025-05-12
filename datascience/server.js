@@ -1,6 +1,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 8000;
 
@@ -61,7 +62,7 @@ app.get('/', (req, res) => {
   // HTML for the file listing with Tailwind styling
   const filesHtml = getNotebookFiles()
     .map(file => {
-      const jupyterUrl = `${JUPYTER_BASE_URL}/notebooks/${process.env.PROJECT_ID}/${file.name}?token=${JUPYTER_TOKEN}`;
+      const jupyterUrl = `${JUPYTER_BASE_URL}/notebooks/${process.env.PROJECT_ID}/${file.name}?token=${JUPYTER_TOKEN}&ts=${Date.now()}`;
       const modifiedDate = file.modified.toLocaleString();
       
       return `
@@ -76,13 +77,12 @@ app.get('/', (req, res) => {
           </td>
           <td class="py-3 px-4 text-gray-400">${modifiedDate}</td>
           <td class="py-3 px-4 text-right">
-            <a 
-              href="/api/delete/${encodeURIComponent(file.name)}" 
-              class="bg-red-600 hover:bg-red-700 text-white py-1 px-3 rounded-md text-sm transition-colors inline-block"
-              onclick="return confirm('Are you sure you want to delete ${file.name}? This action cannot be undone.')"
+            <button 
+              data-filename="${encodeURIComponent(file.name)}"
+              class="delete-btn bg-red-600 hover:bg-red-700 text-white py-1 px-3 rounded-md text-sm transition-colors inline-block"
             >
               Delete
-            </a>
+            </button>
           </td>
         </tr>
       `;
@@ -104,13 +104,40 @@ app.get('/', (req, res) => {
           50% { opacity: 0.5; }
         }
         .refresh-animation { animation: pulse 1s ease-in-out; }
+        
+        /* Modal styles */
+        .modal {
+          display: none;
+          position: fixed;
+          z-index: 1000;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background-color: rgba(0, 0, 0, 0.5);
+          align-items: center;
+          justify-content: center;
+        }
+        
+        .modal-content {
+          background-color: #2d3748;
+          border-radius: 0.5rem;
+          padding: 1.5rem;
+          width: 90%;
+          max-width: 500px;
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .modal-show {
+          display: flex;
+        }
       </style>
     </head>
     <body class="bg-gray-900 min-h-screen text-gray-100">
       <div class="container mx-auto px-4 py-8">
         <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden border border-gray-700">
           <div class="px-6 py-4 bg-indigo-900 text-white flex justify-between items-center">
-            <h1 class="text-xl font-bold">Jupyter Notebooks</h1>
+            <h1 class="text-xl font-bold">Calvin Code Notebooks</h1>
             <div class="flex items-center">
               <span id="refresh-status" class="text-sm mr-3 opacity-0"></span>
               <span id="last-refreshed" class="text-sm">Last refreshed: ${new Date().toLocaleString()}</span>
@@ -139,26 +166,78 @@ app.get('/', (req, res) => {
           </div>
         </div>
       </div>
+      
+      <!-- Custom confirmation modal -->
+      <div id="delete-modal" class="modal">
+        <div class="modal-content">
+          <h3 class="text-lg font-semibold mb-3">Confirm Deletion</h3>
+          <p id="modal-message" class="mb-4 text-gray-300">Are you sure you want to delete this file? This action cannot be undone.</p>
+          <div class="flex justify-end gap-3">
+            <button id="cancel-delete" class="bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded-md">Cancel</button>
+            <button id="confirm-delete" class="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-md">Delete</button>
+          </div>
+        </div>
+      </div>
 
       <script>
-        // Function to refresh the file list every 5 seconds
+        let currentHash = '';
+        
+        // Custom modal logic
+        const modal = document.getElementById('delete-modal');
+        const modalMessage = document.getElementById('modal-message');
+        const cancelDelete = document.getElementById('cancel-delete');
+        const confirmDelete = document.getElementById('confirm-delete');
+        let currentFilename = null;
+        
+        // Handle delete button clicks
+        document.addEventListener('click', function(e) {
+          if (e.target.classList.contains('delete-btn')) {
+            const filename = e.target.getAttribute('data-filename');
+            showDeleteModal(filename);
+          }
+        });
+        
+        // Show delete confirmation modal
+        function showDeleteModal(filename) {
+          currentFilename = filename;
+          const decodedFilename = decodeURIComponent(filename);
+          modalMessage.textContent = 'Are you sure you want to delete ' + decodedFilename + '? This action cannot be undone.';
+          modal.classList.add('modal-show');
+        }
+        
+        // Close modal
+        cancelDelete.addEventListener('click', function() {
+          modal.classList.remove('modal-show');
+          currentFilename = null;
+        });
+        
+        // Confirm delete
+        confirmDelete.addEventListener('click', function() {
+          if (currentFilename) {
+            window.location.href = '/api/delete/' + currentFilename;
+          }
+          modal.classList.remove('modal-show');
+        });
+        
         function refreshFileList() {
           const refreshStatus = document.getElementById('refresh-status');
           const fileListContainer = document.getElementById('file-list-container');
           
-          // Show refreshing indicator
           refreshStatus.textContent = 'Refreshing...';
           refreshStatus.classList.add('opacity-100');
           
           fetch(window.location.href + 'api/files')
             .then(function(response) { return response.json(); })
             .then(function(data) {
-              const fileList = document.getElementById('file-list');
+              if (data.hash === currentHash) {
+                refreshStatus.classList.remove('opacity-100');
+                return;
+              }
               
-              // Apply refresh animation
+              currentHash = data.hash;
+              const fileList = document.getElementById('file-list');
               fileListContainer.classList.add('refresh-animation');
               
-              // Update the file list
               if (data.files.length === 0) {
                 fileList.innerHTML = '<tr><td colspan="3" class="py-8 text-center text-gray-400">No notebook files found in ./notebooks</td></tr>';
               } else {
@@ -175,10 +254,9 @@ app.get('/', (req, res) => {
                   htmlContent += '</td>';
                   htmlContent += '<td class="py-3 px-4 text-gray-400">' + file.modified + '</td>';
                   htmlContent += '<td class="py-3 px-4 text-right">';
-                  htmlContent += '<a href="/api/delete/' + encodeURIComponent(file.name) + '" ';
-                  htmlContent += 'class="bg-red-600 hover:bg-red-700 text-white py-1 px-3 rounded-md text-sm transition-colors inline-block" ';
-                  htmlContent += 'onclick="return confirm(\'Are you sure you want to delete ' + file.name + '? This action cannot be undone.\')">';
-                  htmlContent += 'Delete</a>';
+                  htmlContent += '<button data-filename="' + encodeURIComponent(file.name) + '" ';
+                  htmlContent += 'class="delete-btn bg-red-600 hover:bg-red-700 text-white py-1 px-3 rounded-md text-sm transition-colors inline-block">';
+                  htmlContent += 'Delete</button>';
                   htmlContent += '</td>';
                   htmlContent += '</tr>';
                 }
@@ -186,10 +264,8 @@ app.get('/', (req, res) => {
                 fileList.innerHTML = htmlContent;
               }
               
-              // Update last refreshed time
               document.getElementById('last-refreshed').textContent = 'Last refreshed: ' + new Date().toLocaleString();
               
-              // Hide refreshing indicator after a short delay
               setTimeout(function() {
                 refreshStatus.classList.remove('opacity-100');
                 fileListContainer.classList.remove('refresh-animation');
@@ -204,10 +280,7 @@ app.get('/', (req, res) => {
             });
         }
         
-        // Refresh immediately on load
         refreshFileList();
-        
-        // Set up interval for refreshing every 5 seconds
         setInterval(refreshFileList, 5000);
       </script>
     </body>
@@ -222,9 +295,8 @@ app.get('/api/files', (req, res) => {
   try {
     const notebooksDir = path.join(__dirname, 'notebooks');
     
-    // If directory doesn't exist, return empty array
     if (!fs.existsSync(notebooksDir)) {
-      return res.json({ files: [] });
+      return res.json({ files: [], hash: '' });
     }
 
     const files = fs.readdirSync(notebooksDir)
@@ -239,7 +311,8 @@ app.get('/api/files', (req, res) => {
         };
       });
 
-    res.json({ files });
+    const hash = crypto.createHash('md5').update(JSON.stringify(files)).digest('hex');
+    res.json({ files, hash });
   } catch (error) {
     console.error('Error reading notebooks directory:', error);
     res.status(500).json({ error: 'Failed to read notebooks directory' });

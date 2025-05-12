@@ -9,11 +9,39 @@ https://pocs.nyc3.cdn.digitaloceanspaces.com/sales_data_sample.csv
 
 You can download this data using Python with the following code:
 
+Super important to be robust regarding encoding. 
+
 ```python
-import pandas as pd
+# Load the sales data by first downloading the raw bytes and then decoding properly
+import requests
+import io
 
 url = "https://pocs.nyc3.cdn.digitaloceanspaces.com/sales_data_sample.csv"
-sales_data = pd.read_csv(url)
+
+# Download the raw bytes
+response = requests.get(url)
+raw_data = response.content
+
+# First, try to detect encoding - most likely latin1 or cp1252 based on the error
+try:
+    decoded_content = raw_data.decode('latin1')
+    encoding_used = 'latin1'
+except UnicodeDecodeError:
+    try:
+        decoded_content = raw_data.decode('cp1252')
+        encoding_used = 'cp1252'
+    except UnicodeDecodeError:
+        # Fallback to a very permissive encoding that rarely fails
+        decoded_content = raw_data.decode('latin1', errors='replace')
+        encoding_used = 'latin1 with replacement'
+
+print(f"Successfully decoded file using {encoding_used} encoding")
+
+# Load the CSV from the properly decoded string
+sales_data = pd.read_csv(io.StringIO(decoded_content))
+
+# Display the first few rows
+sales_data.head()
 ```
 
 ## Data Dictionary
@@ -75,6 +103,10 @@ For example, if seaborn is needed, the following cell should be added:
 
 ```!pip install seaborn```
 
+# Implementation examples 
 
+If the user instruction is related to an example, read the example. 
+
+In _examples/rfm_analysis_notebook.ipynb there is an example of how to implement the RFM analysis.
 
 
