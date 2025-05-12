@@ -24,6 +24,12 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   
+  // Disable caching
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
@@ -307,7 +313,7 @@ app.get('/api/files', (req, res) => {
           name: file,
           path: file,
           modified: stats.mtime.toLocaleString(),
-          url: `${JUPYTER_BASE_URL}/notebooks/${process.env.PROJECT_ID}/${file}?token=${JUPYTER_TOKEN}`
+          url: `${JUPYTER_BASE_URL}/notebooks/${process.env.PROJECT_ID}/${file}?token=${JUPYTER_TOKEN}&ts=${Date.now()}`
         };
       });
 
